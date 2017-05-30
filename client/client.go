@@ -88,12 +88,12 @@ func main() {
 			//con.SetReadDeadline(time.Now().Add(pongWait))
 			return nil
 		})
-		con.SetPingHandler(func(s string) error {
-			fmt.Printf("received PING (%s) from %s\n", s, con.UnderlyingConn().RemoteAddr().String())
-			//con.SetReadDeadline(time.Now().Add(pongWait))
-			pchan <- []byte(s)
-			return nil
-		})
+		//con.SetPingHandler(func(s string) error {
+		//	fmt.Printf("received PING (%s) from %s\n", s, con.UnderlyingConn().RemoteAddr().String())
+		//	con.SetReadDeadline(time.Now().Add(pongWait))
+		//	pchan <- []byte(s)
+		//	return nil
+		//})
 		for {
 			_, message, err := con.ReadMessage()
 			if err != nil {
@@ -122,14 +122,14 @@ func main() {
 				}
 
 			case pmsg := <-pchan:
-				//con.SetWriteDeadline(time.Now().Add(writeWait))
+				con.SetWriteDeadline(time.Now().Add(pongWait))
 				fmt.Printf("sending PONG to %s\n", con.UnderlyingConn().RemoteAddr().String())
 				if err := con.WriteMessage(websocket.PongMessage, pmsg); err != nil {
 					return
 				}
 
 			case <-pingtimer.C:
-				//con.SetWriteDeadline(time.Now().Add(writeWait))
+				con.SetWriteDeadline(time.Now().Add(pongWait))
 				fmt.Printf("sending PING to %s\n", con.UnderlyingConn().RemoteAddr().String())
 				if err := con.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
 					return
