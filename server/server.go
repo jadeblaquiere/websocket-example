@@ -28,88 +28,90 @@
 package main
 
 import (
-    "fmt"
-    "sync"
-    "time"
-    
-    "gopkg.in/kataras/iris.v5"
+	"fmt"
+	"sync"
+	"time"
+
+	"gopkg.in/kataras/iris.v5"
 )
 
 type IndexResponse struct {
-    RequestIP string `json:"request_ip"`
-    Time int64 `json:"unix_time"`
+	RequestIP string `json:"request_ip"`
+	Time      int64  `json:"unix_time"`
 }
 
-type WSClient struct{
-    con iris.WebsocketConnection
-    wss *WSServer
+type WSClient struct {
+	con iris.WebsocketConnection
+	wss *WSServer
 }
 
-func (wsc *WSClient) Receive (message []byte) {
-    fmt.Println("recv :", string(message))
-    wsc.con.EmitMessage(message)
+func (wsc *WSClient) Receive(message []byte) {
+	fmt.Println("recv :", string(message))
+	wsc.con.EmitMessage(message)
 }
 
-func (wsc *WSClient) Disconnect () {
-    fmt.Println("client disconnect")
-    wsc.wss.Disconnect(wsc)
+func (wsc *WSClient) Disconnect() {
+	fmt.Println("client disconnect @ ", time.Now().Format("2006-01-02 15:04:05.000000"))
+	wsc.wss.Disconnect(wsc)
 }
 
 type WSServer struct {
-    clients []*WSClient
-    listMutex sync.Mutex
+	clients   []*WSClient
+	listMutex sync.Mutex
 }
 
-func (wss *WSServer) Connect (con iris.WebsocketConnection) {
-    wss.listMutex.Lock()
-    defer wss.listMutex.Unlock()
-    
-    c := &WSClient{con: con, wss: wss}
-    wss.clients = append(wss.clients, c)
-    
-    fmt.Printf("Connect # active clients : %d\n", len(wss.clients))
+func (wss *WSServer) Connect(con iris.WebsocketConnection) {
+	wss.listMutex.Lock()
+	defer wss.listMutex.Unlock()
 
-    con.OnMessage(c.Receive)
-    
-    con.OnDisconnect(c.Disconnect)
+	c := &WSClient{con: con, wss: wss}
+	wss.clients = append(wss.clients, c)
+
+	fmt.Printf("Connect # active clients : %d\n", len(wss.clients))
+
+	con.OnMessage(c.Receive)
+
+	con.OnDisconnect(c.Disconnect)
 }
 
-func (wss *WSServer) Disconnect (wsc *WSClient) {
-    wss.listMutex.Lock()
-    defer wss.listMutex.Unlock()
-    
-    l := len(wss.clients)
-    
-    if l == 0 {
-        panic("WSS:trying to delete client from empty list")
-    }
-    
-    for p, v := range wss.clients {
-        if v == wsc {
-            wss.clients[p] = wss.clients[l-1]
-            wss.clients = wss.clients[:l-1]
-            
-            fmt.Printf("Disconnect # active clients : %d\n", len(wss.clients))
-            
-            return
-        }
-    }
-    panic("WSS:trying to delete client not in list")
+func (wss *WSServer) Disconnect(wsc *WSClient) {
+	wss.listMutex.Lock()
+	defer wss.listMutex.Unlock()
+
+	l := len(wss.clients)
+
+	if l == 0 {
+		panic("WSS:trying to delete client from empty list")
+	}
+
+	for p, v := range wss.clients {
+		if v == wsc {
+			wss.clients[p] = wss.clients[l-1]
+			wss.clients = wss.clients[:l-1]
+
+			fmt.Printf("Disconnect # active clients : %d\n", len(wss.clients))
+
+			return
+		}
+	}
+	panic("WSS:trying to delete client not in list")
 }
 
 var wss WSServer
 
-func main () {
-    i := iris.New()
-    i.Get("/", index)
-    i.Config.Websocket.Endpoint = "/ws"
-    i.Websocket.OnConnection(wss.Connect)
-    
-    i.Listen(":8080")
+func main() {
+	i := iris.New()
+	i.Get("/", index)
+	i.Config.Websocket.Endpoint = "/ws"
+	i.Config.Websocket.BinaryMessages = true
+	i.Config.Websocket.WriteTimeout = 60 * time.Second
+	i.Config.Websocket.ReadTimeout = 60 * time.Second
+	i.Websocket.OnConnection(wss.Connect)
+
+	i.Listen(":8080")
 }
 
-func index (ctx *iris.Context) {
-    t := time.Now().Unix()
-    ctx.JSON(iris.StatusOK, IndexResponse{RequestIP: ctx.RequestIP(), Time: t})
+func index(ctx *iris.Context) {
+	t := time.Now().Unix()
+	ctx.JSON(iris.StatusOK, IndexResponse{RequestIP: ctx.RequestIP(), Time: t})
 }
-
